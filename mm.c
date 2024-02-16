@@ -34,32 +34,35 @@ team_t team = {
     /* Second member's email address (leave blank if none) */
     ""};
 
-#define WSIZE 4 // header/footer 사이즈(bytes)
-#define DSIZE 8 // 더블 워드 사이즈(bytes)
+#define WSIZE 4             // header/footer 사이즈(bytes)
+#define DSIZE 8             // 더블 워드 사이즈(bytes)
 #define CHUNKSIZE (1 << 12) // 이 크기 만큼 힙을 확장(bytes)
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
-//크기와 할당 비트를 통합하여 header/footer에 저장할 수 있는 값 리턴
+// 크기와 할당 비트를 통합하여 header/footer에 저장할 수 있는 값 리턴
 #define PACK(size, alloc) ((size) | (alloc))
 
-//p가 참조하는 워드를 읽어서 리턴
+// p가 참조하는 워드를 읽어서 리턴
 #define GET(p) (*(unsigned int *)(p))
 
-//p가 가리키는 워드에 val 저장
+// p가 가리키는 워드에 val 저장
 #define PUT(p, val) (*(unsigned int *)(p) = (val))
 
-//주소 p에 있는 header/footer의 size와 할당 bit 리턴
+// 주소 p에 있는 header/footer의 size와 할당 bit 리턴
 #define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
-//bp를 받아 블록의 header/footer 가리키는 포인터 리턴
+// bp를 받아 블록의 header/footer 가리키는 포인터 리턴
 #define HERP(bp) ((char *)(bp)-WSIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HERP(bp) - DSIZE))
 
-//다음과 이전 블록의 블록 포인터 리턴
-#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
-#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+// 다음과 이전 블록의 블록 포인터 리턴
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
+#define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
+
+static void *heap_listp;
+static void *extend_heap(size_t words);
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
@@ -69,6 +72,8 @@ team_t team = {
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
+
+
 /*
  * mm_init - initialize the malloc package.
  */
@@ -76,10 +81,24 @@ int mm_init(void)
 {
     mem_init();
 
-    if ((heap_listp = mem_sbrk(4 * ALIGNMENT)) == (void *)-1)
+    if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
     {
         return -1;
     }
+    PUT(heap_listp, 0);
+    PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
+    PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
+    heap_listp += (2*WSIZE);
+
+    if(extend_heap(CHUNKSIZE/WSIZE) == NULL){
+        return -1;
+    }
+    return 0;
+}
+
+static void *extend_heap(size_t words){
+    
 }
 
 /*

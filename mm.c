@@ -54,7 +54,7 @@ team_t team = {
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 // bp를 받아 블록의 header/footer 가리키는 포인터 리턴
-#define HERP(bp) ((char *)(bp)-WSIZE)
+#define HDRP(bp) ((char *)(bp)-WSIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HERP(bp) - DSIZE))
 
 // 다음과 이전 블록의 블록 포인터 리턴
@@ -63,6 +63,7 @@ team_t team = {
 
 static void *heap_listp;
 static void *extend_heap(size_t words);
+static void *coalesce(void *bp);
 
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
@@ -71,8 +72,6 @@ static void *extend_heap(size_t words);
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-
-
 
 /*
  * mm_init - initialize the malloc package.
@@ -89,16 +88,29 @@ int mm_init(void)
     PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1));
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
-    heap_listp += (2*WSIZE);
+    heap_listp += (2 * WSIZE);
 
-    if(extend_heap(CHUNKSIZE/WSIZE) == NULL){
+    if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
+    {
         return -1;
     }
     return 0;
 }
 
-static void *extend_heap(size_t words){
-    
+static void *extend_heap(size_t words)
+{
+    char *bp;
+    size_t size;
+
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    if ((long)(bp = mem_sbrk(size)) == 1)
+        return NULL;
+
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+
+    return coalesce(bp);
 }
 
 /*
@@ -123,6 +135,20 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), PACK(size, 0));
+    PUT(FTRP(ptr), PACK(size, 0));
+    coalesce(ptr);
+}
+
+static void *coalesce(void *bp)
+{
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), PACK(size, 0));
+    PUT(FTRP(ptr), PACK(size, 0));
+    coalesce(ptr);
 }
 
 /*

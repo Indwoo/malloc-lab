@@ -90,53 +90,74 @@ int mm_init(void)
     return 0;
 }
 
-//새 가용 블록으로 힙 확장하기
+//새 가용 블록으로 힙 확장하기(힙이 초기화되거나 malloc이 적당한 맞춤 fit을 찾지 못했을 때)
 static void *extend_heap(size_t words)  
 {
     char *bp;
     size_t size;
 
-    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    ////////////////////////////////////////////////////////////////////////////////////////////
+    //정렬 유지 위해 요청한 크기를 인접 2워드 배수(8바이트)로 반올림 하여 추가적인 힙 공간을 요청한다.
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;   
 
     if ((long)(bp = mem_sbrk(size)) == -1)
         return NULL;
+    ////////////////////////////////////////////////////////////////////////////////////////////
 
-    PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTRP(bp), PACK(size, 0));
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+    PUT(HDRP(bp), PACK(size, 0));   //전달받은 size의 크기(2워드 배수)만큼 새 가용 블록의 header
+    PUT(FTRP(bp), PACK(size, 0));   //새 가용 블록의 footer. 
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));   // heap공간이 추가되었으므로 epilouge의 새로운 header가 된다.
 
-    return coalesce(bp);
+    return coalesce(bp);    //이전 힙이 가용블록으로 끝났으면 두 가용 블록을 합하기 위해 함수 호출, 통합된 블록의 블록 포인터 리턴
+}
+
+/*
+ * mm_free - Freeing a block does nothing.
+ */
+void mm_free(void *ptr)
+{
+    size_t size = GET_SIZE(HDRP(ptr));
+
+    PUT(HDRP(ptr), PACK(size, 0));  // header에 할당받았던 사이즈와 정보가 없다는 0 정보를 넣어둠
+    PUT(FTRP(ptr), PACK(size, 0));  // footer에 할당받았던 사이즈와 정보가 없다는 0 정보를 넣어둠
+    coalesce(ptr);
 }
 
 static void *coalesce(void *bp)
-{
+{   
+    //이전 블록의 블록 포인터의 footer를 받음
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+
+    //다음 블록의 블록 포인터의 header를 받음
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+
+    //지금 블록의 헤더포인터에서 사이즈를 가져옴
     size_t size = GET_SIZE(HDRP(bp));
 
-    if (prev_alloc && next_alloc)
+    if (prev_alloc && next_alloc)   //이전과 다음 블록이 모두 할당된 상태
     {
         return bp;
     }
-    else if (prev_alloc && !next_alloc)
+    else if (prev_alloc && !next_alloc)     //이전 블록은 할당, 다음 블록은 가용(비어있는)상태
     {
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size, 0));
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));  //다음 블록의 header에서 사이즈를 가져와서 더함
+        PUT(HDRP(bp), PACK(size, 0));   //현재 bp header에 가용된 블록의 사이즈만큼 갱신함
+        PUT(FTRP(bp), PACK(size, 0));   //현재 bp footer에 가용된 블록의 사이즈만큼 갱신함
     }
-    else if (!prev_alloc && next_alloc)
+    else if (!prev_alloc && next_alloc) //이전 블록은 가용, 다음 블록은 할당된 상태
     {
-        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-        PUT(FTRP(bp), PACK(size, 0));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        bp = PREV_BLKP(bp);
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));  //이전 블록의 header에서 사이즈를 가져와서 더함
+        PUT(FTRP(bp), PACK(size, 0));   //현재 bp footer에 가용된 블록의 사이즈만큼 갱신함
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));    //현재 bp가 가리키는 이전 블록의 bp의 header에 size 정보를 갱신함
+        bp = PREV_BLKP(bp); //bp를 이전 블록의 bp로 갱신함
     }
-    else
+    else    //이전과 다음 블록이 모두 가용한 상태
     {
+        //이전 블록의 header에서 가져온 사이즈 + 다음 블록의 footer에서 가져온 사이즈를 더함
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
-        bp = PREV_BLKP(bp);
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));    //현재 bp의 이전 블록의 header 포인터에 size 정보 갱신함
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));    //현재 bp의 다음 블록의 footer 포인터에 size 정보 갱신함
+        bp = PREV_BLKP(bp);     //bp를 이전 블록의 bp로 갱신함
     }
     return bp;
 }
@@ -215,18 +236,6 @@ static void place(void *bp, size_t asize)
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
-}
-
-/*
- * mm_free - Freeing a block does nothing.
- */
-void mm_free(void *ptr)
-{
-    size_t size = GET_SIZE(HDRP(ptr));
-
-    PUT(HDRP(ptr), PACK(size, 0));
-    PUT(FTRP(ptr), PACK(size, 0));
-    coalesce(ptr);
 }
 
 /*

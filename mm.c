@@ -162,6 +162,8 @@ static void *coalesce(void *bp)
         size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // 다음 블록의 header에서 사이즈를 가져와서 더함
         PUT(HDRP(bp), PACK(size, 0));          // 현재 bp header에 가용된 블록의 사이즈만큼 갱신함
         PUT(FTRP(bp), PACK(size, 0));          // 현재 bp footer에 가용된 블록의 사이즈만큼 갱신함
+        add_free_block(bp);                    // 현재 병합한 가용 블록을 free_list에 추가
+        return bp;
     }
     else if (!prev_alloc && next_alloc) // 이전 블록은 가용, 다음 블록은 할당된 상태
     {
@@ -170,6 +172,8 @@ static void *coalesce(void *bp)
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 현재 bp가 가리키는 이전 블록의 bp의 header에 size 정보를 갱신함
         PUT(FTRP(bp), PACK(size, 0));            // 현재 bp footer에 가용된 블록의 사이즈만큼 갱신함
         bp = PREV_BLKP(bp);                      // bp를 이전 블록의 bp로 갱신함
+        add_free_block(bp);                      // 현재 병합한 가용 블록을 free_list에 추가
+        return bp;
     }
     else // 이전과 다음 블록이 모두 가용한 상태
     {
@@ -180,10 +184,10 @@ static void *coalesce(void *bp)
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 현재 bp의 이전 블록의 header 포인터에 size 정보 갱신함
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); // 현재 bp의 다음 블록의 footer 포인터에 size 정보 갱신함
         bp = PREV_BLKP(bp);                      // bp를 이전 블록의 bp로 갱신함
+        add_free_block(bp);                      // 현재 병합한 가용 블록을 free_list에 추가
+        return bp;
     }
-
-    add_free_block(bp); // 현재 병합한 가용 블록을 free_list에 추가
-    return bp;
+    
 }
 
 /*

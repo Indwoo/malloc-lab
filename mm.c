@@ -38,7 +38,7 @@ team_t team = {
 #define DSIZE 8             // 더블 워드 사이즈 8bytes
 #define CHUNKSIZE (1 << 12) // 이 크기 만큼 힙을 확장(bytes)
 
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MAX(x, y) (x > y ? x : y)
 
 // 크기와 할당 비트를 통합하여 header/footer에 저장할 수 있는 값을 1워드로 리턴한다.
 #define PACK(size, alloc) ((size) | (alloc))
@@ -47,7 +47,7 @@ team_t team = {
 #define GET(p) (*(unsigned int *)(p))
 
 // p가 가리키는 워드에 val 저장
-#define PUT(p, val) (*(unsigned int *)(p) = (val))
+#define PUT(p, val) (*(unsigned int *)(p) = (unsigned int)(val))
 
 // 주소 p에 있는 header/footer의 size와 할당 bit 리턴
 #define GET_SIZE(p) (GET(p) & ~0x7)
@@ -61,14 +61,10 @@ team_t team = {
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 // 다음과 이전 블록의 블록 포인터 리턴
-#define NEXT_BLKP(bp) (((char *)(bp) + GET_SIZE((char *)(bp)-WSIZE)))
-#define PREV_BLKP(bp) (((char *)(bp)-GET_SIZE((char *)(bp)-DSIZE)))
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
+#define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
 // for explicit
-#define ALIGNMENT 8
-
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
 #define GET_SUCC(bp) (*(void **)((char *)(bp) + WSIZE)) // 다음 가용 블록의 주소
 #define GET_PRED(bp) (*(void **)(bp))                   // 이전 가용 블록의 주소
 
@@ -102,7 +98,7 @@ int mm_init(void)
     // 에필로그 Header: 프로그램이 할당한 마지막 블록의 뒤에 위치하며, 블록이 할당되지 않은 상태를 나타냄
     PUT(heap_listp + (7 * WSIZE), PACK(0, 1));
 
-    heap_listp += DSIZE;
+    heap_listp += (4 * WSIZE);
 
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
     {
@@ -171,8 +167,8 @@ static void *coalesce(void *bp)
     {
         splice_free_block(PREV_BLKP(bp));        // 가용 블록을 free_list에서 제거
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));   // 이전 블록의 header에서 사이즈를 가져와서 더함
-        PUT(FTRP(bp), PACK(size, 0));            // 현재 bp footer에 가용된 블록의 사이즈만큼 갱신함
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // 현재 bp가 가리키는 이전 블록의 bp의 header에 size 정보를 갱신함
+        PUT(FTRP(bp), PACK(size, 0));            // 현재 bp footer에 가용된 블록의 사이즈만큼 갱신함
         bp = PREV_BLKP(bp);                      // bp를 이전 블록의 bp로 갱신함
     }
     else // 이전과 다음 블록이 모두 가용한 상태
@@ -207,7 +203,7 @@ void *mm_malloc(size_t size)
         asize = 2 * DSIZE;
     else
         // 16바이트보다 큰 경우 header footer 8바이트 + 인접한 8의 배수 만큼 할당
-        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
+        asize = DSIZE * ((size + DSIZE + DSIZE - 1) / DSIZE);
 
     if ((bp = find_fit(asize)) != NULL) // 적절한 가용 블록을 가용 리스트에서 검색
     {
@@ -257,9 +253,9 @@ static void place(void *bp, size_t asize)
     {
         PUT(HDRP(bp), PACK(asize, 1)); // 현재 블록에는 필요한 만큼만 할당
         PUT(FTRP(bp), PACK(asize, 1));
-        bp = NEXT_BLKP(bp);
-        PUT(HDRP(bp), PACK(csize - asize, 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
-        PUT(FTRP(bp), PACK(csize - asize, 0));
+
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(csize - asize, 0)); // 남은 크기를 다음 블록에 할당(가용 블록)
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(csize - asize, 0));
         add_free_block(NEXT_BLKP(bp)); // 남은 블록을 free_list에 추가
     }
     else
@@ -274,22 +270,31 @@ static void place(void *bp, size_t asize)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
+    /* 예외 처리 */
+    if (ptr == NULL) // 포인터가 NULL인 경우 할당만 수행
+        return mm_malloc(size);
 
-    newptr = mm_malloc(size);
+    if (size <= 0) // size가 0인 경우 메모리 반환만 수행
+    {
+        mm_free(ptr);
+        return 0;
+    }
 
+    /* 새 블록에 할당 */
+    void *newptr = mm_malloc(size); // 새로 할당한 블록의 포인터
     if (newptr == NULL)
-        return NULL;
+        return NULL; // 할당 실패
 
-    copySize = GET_SIZE(HDRP(oldptr));
+    /* 데이터 복사 */
+    size_t copySize = GET_SIZE(HDRP(ptr)) - DSIZE; // payload만큼 복사
+    if (size < copySize)                           // 기존 사이즈가 새 크기보다 더 크면
+        copySize = size;                           // size로 크기 변경 (기존 메모리 블록보다 작은 크기에 할당하면, 일부 데이터만 복사)
 
-    if (size < copySize)
-        copySize = size;
+    memcpy(newptr, ptr, copySize); // 새 블록으로 데이터 복사
 
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
+    /* 기존 블록 반환 */
+    mm_free(ptr);
+
     return newptr;
 }
 

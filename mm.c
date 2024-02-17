@@ -175,18 +175,20 @@ void *mm_malloc(size_t size)
     if (size == 0)
         return NULL;
 
-    if (size <= DSIZE)
+    if (size <= DSIZE)  //최소 16바이트 크기 블록 구성(정렬 요건을 위한 8바이트 + header와 footer 8바이트)
         asize = 2 * DSIZE;
     else
-        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
+        //16바이트보다 큰 경우 header footer 8바이트 + 인접한 8의 배수 만큼 할당
+        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);   
 
-    if ((bp = find_fit(asize)) != NULL)
+    if ((bp = find_fit(asize)) != NULL) //적절한 가용 블록을 가용 리스트에서 검색
     {
-        place(bp, asize);
+        place(bp, asize);   //요청한 블록 배치, 옵션으로 초과 부분 분할, 새롭게 할당한 블록 리턴
         return bp;
     }
 
-    extendsize = MAX(asize, CHUNKSIZE);
+    //할당기가 맞는 블록을 찾지 못하면 힙을 새로운 가용 블록으로 확장
+    extendsize = MAX(asize, CHUNKSIZE); 
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;
 

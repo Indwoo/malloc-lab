@@ -1,14 +1,3 @@
-/*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- *
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -18,20 +7,11 @@
 #include "mm.h"
 #include "memlib.h"
 
-/*********************************************************
- * NOTE TO STUDENTS: Before you do anything else, please
- * provide your team information in the following struct.
- ********************************************************/
 team_t team = {
-    /* Team name */
     "3team",
-    /* First member's full name */
     "Indwoo",
-    /* First member's email address */
     "jiu05042995@gmail.com",
-    /* Second member's full name (leave blank if none) */
     "",
-    /* Second member's email address (leave blank if none) */
     ""};
 
 #define WSIZE 4             // header/footer 사이즈 4bytes
@@ -78,9 +58,6 @@ static void place(void *bp, size_t asize);
 static void splice_free_block(void *bp); // 가용 리스트에서 제거
 static void add_free_block(void *bp);    // 가용 리스트에 추가
 
-/*
- * mm_init - initialize the malloc package.
- */
 int mm_init(void)
 {
     // 8워드 크기의 힙 생성, heap_listp에 힙의 시작 주소값 할당
@@ -128,9 +105,6 @@ static void *extend_heap(size_t words)
     return coalesce(bp); // 이전 힙이 가용블록으로 끝났으면 두 가용 블록을 합하기 위해 함수 호출, 통합된 블록의 블록 포인터 리턴
 }
 
-/*
- * mm_free - Freeing a block does nothing.
- */
 void mm_free(void *ptr)
 {
     size_t size = GET_SIZE(HDRP(ptr));
@@ -190,10 +164,6 @@ static void *coalesce(void *bp)
     
 }
 
-/*
- * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
- */
 void *mm_malloc(size_t size)
 {
     size_t asize;
@@ -269,9 +239,7 @@ static void place(void *bp, size_t asize)
     }
 }
 
-/*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
- */
+
 void *mm_realloc(void *ptr, size_t size)
 {
     /* 예외 처리 */
